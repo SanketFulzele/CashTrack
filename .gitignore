@@ -1,0 +1,83 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+.out/
+.vercel/
+.netlify/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+*.local
+
+# Vite cache
+node_modules/.vite
+.vite
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Tailwind cache
+.tailwindcache
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+
+# Package manager files (optional lock ignore — remove if you commit lock files)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Misc
+tmp/
+temp/
+.cache/
+.eslintcache
+
+# Testing
+playwright-report/
+test-results/
+
+# Storybook
+storybook-static/
+
+# Firebase
+.firebase/
+
+# Debug
+*.pid
+*.seed
+*.pid.lock
+
+# Optional: local certs
+*.pem
+*.crt
