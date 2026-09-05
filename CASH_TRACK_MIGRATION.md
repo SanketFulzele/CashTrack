@@ -8,7 +8,7 @@ CashTrack is a personal money-lending tracker built with React + Vite + TypeScri
 
 ## Current Architecture
 
-> **As of Sprint 11 (final) — the app is deployed and served from the user's Vercel project (`https://cash-tracking-app.vercel.app`); Neon Auth uses email/password (Google OAuth removed, §7c), a leaked Neon `DATABASE_URL` password in the committed `.env.example` was scrubbed and rotation is required (Sprint 11 spec). Sprints 1–11 COMPLETED; the only remaining items are user-run manual checks (Neon password rotation, live browser/multi-user/PWA/DB verification, and post-rotation production verification) — see the Final Status block and Sprint 11 section. The original (Sprint 1) baseline is retained in the Sprint 1 audit section.**
+> **As of Sprint 11 (final) — the app is deployed and served from the user's Vercel project (`https://cash-tracking-app.vercel.app`); Neon Auth uses email/password (Google OAuth removed, §7c), a leaked Neon `DATABASE_URL` password in the committed `.env.example` was scrubbed and rotation is required (Sprint 11 spec), and the production "Session token missing" bug was fixed (§9 hotfix — redeploy pending). Sprints 1–11 COMPLETED; the only remaining items are user-run manual checks (Neon password rotation, redeploying the hotfix bundle, live browser/multi-user/PWA/DB verification, and post-rotation production verification) — see the Final Status block and Sprint 11/§9 sections. The original (Sprint 1) baseline is retained in the Sprint 1 audit section.**
 
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
 - **Backend:** Vercel Serverless Functions (`api/*`) — the only way the browser reaches the database
@@ -39,13 +39,13 @@ CashTrack is a personal money-lending tracker built with React + Vite + TypeScri
 
 **Data migration:** **No Supabase data was migrated** (Sprint 5 decision) — Neon production tables start empty (`fresh data`) and are populated manually through the app. Supabase remains only as an optional neon-auth compatibility layer profile; no app code depends on `@supabase/supabase-js`, Supabase env vars, or Supabase URLs.
 
-**Testing (executed, green):** `npm test` → 6 files / **77 passed**; `npx tsc -b` → exit 0; `npm run build` → PASS (PWA). Lint baseline: 12 errors / 11 warnings (pre-existing, unchanged).
+**Testing (executed, green):** `npm test` → 6 files / **80 passed**; `npx tsc -b` → exit 0; `npm run build` → PASS (PWA). Lint baseline: 12 errors / 11 warnings (pre-existing, unchanged).
 
 **Production probes (executed 2026-09-05, PASS):** `/`, `/login`, `/borrower/<uuid>` → 200 HTML (SPA rewrite, no 404 on deep refresh); `/sw.js` + `/manifest.webmanifest` → 200; unauthenticated API access → 401 (`GET`/`POST /api/borrowers`, `PATCH`/`DELETE /api/borrowers/<uuid>`, `POST /api/transactions`); by-design 405s for `GET /api/borrowers/<uuid>` and `GET /api/transactions`. Prod bundle serves `https://ep-wispy-pond-b34jwwoo.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth`; JWKS endpoint 200.
 
 **Security:** a leaked `DATABASE_URL` password committed in `.env.example` was **scrubbed** (replaced with `<ROTATED_PASSWORD>` placeholder). **The Neon role password MUST still be rotated by the user** (the exposed value remains valid until then) — see Sprint 11 spec. No other secrets were found in tracked files.
 
-**PENDING (user-run, never claimed as passed):** (1) Neon DB password rotation + Vercel `DATABASE_URL` update + redeploy, (2) post-rotation production re-verification, (3) live sign-up/login/logout/session/invalid-credentials, (4) borrower + transaction CRUD and balances in the browser, (5) two-user ownership isolation (+ direct cross-user API IDs), (6) DB persistence row verification, (7) PWA install/runtime, (8) browser-console sweep (no JS/API/CORS/401/403/500 errors), (9) the DB-schema verification query in the Sprint 11 section.
+**PENDING (user-run, never claimed as passed):** (1) Neon DB password rotation + Vercel `DATABASE_URL` update + redeploy, (2) post-rotation production re-verification, (3) **re-deploy the bundle containing the "Session token missing" hotfix (§9 below), then live-verify login → dashboard no longer errors** ☑, (4) live sign-up/login/logout/session/invalid-credentials, (5) borrower + transaction CRUD and balances in the browser, (6) two-user ownership isolation (+ direct cross-user API IDs), (7) DB persistence row verification, (8) PWA install/runtime, (9) browser-console sweep (no JS/API/CORS/401/403/500 errors), (10) the DB-schema verification query in the Sprint 11 section.
 
 ---
 
@@ -61,7 +61,7 @@ CashTrack is a personal money-lending tracker built with React + Vite + TypeScri
 - Sprint 8 — Full Testing: **COMPLETED** (72 tests passed, typecheck/build PASS, lint 12e/11w baseline unchanged; source audit, API security review, and frontend data-flow review clean; manual browser + multi-user live tests remain PENDING — see Sprint 8 section)
 - Sprint 9 — Production Deployment: **COMPLETED** (deployed on the user's Vercel project; the Google OAuth production attempt is **ABANDONED/removed** — the app now uses Neon Auth email/password (§7c); the production bundle was verified serving the documented Neon Auth endpoint; the live login check rolls into Sprint 10)
 - Sprint 10 — Full Production Testing: **COMPLETED** (automated checks + production endpoint probes passed: npm test 77 passed, tsc exit 0, build PASS; routing + unauthenticated-API-401 + PWA asset probes PASS; interactive browser, multi-user, PWA-runtime, and DB-persistence checks remain PENDING and are carried into the Sprint 11 checklist — user-run)
-- Sprint 11 — Final Cleanup & Production Sign-off: **COMPLETED** (secret audit + scrubbed committed Neon password from `.env.example` [rotation user-run], 4 unused dependencies removed, `dev-dist/` untracked, git + final code review done, final automated tests green — npm test 77 passed, tsc exit 0, build PASS; production routing/401 probes re-verified; user-run manual items PENDING: Neon DB password rotation, post-rotation production verification, live browser/multi-user/PWA/DB checks — see Sprint 11 section)
+- Sprint 11 — Final Cleanup & Production Sign-off: **COMPLETED** (secret audit + scrubbed committed Neon password from `.env.example` [rotation user-run], 4 unused dependencies removed, `dev-dist/` untracked, git + final code review done, production hotfix for "Session token missing" implemented [§9 — redeploy pending], final automated tests green — npm test 80 passed, tsc exit 0, build PASS; production routing/401 probes re-verified; user-run manual items PENDING: Neon DB password rotation, redeploy of the hotfix bundle, post-rotation production verification, live browser/multi-user/PWA/DB checks — see Sprint 11/§9 sections)
 
 ---
 
@@ -1792,7 +1792,7 @@ PWA assets:
 
 ### 5. Final automated verification (executed, green)
 
-- `npm test` → 6 test files / **77 passed** (frontend-auth 16, api-handlers 24, api-validation 17, store 13, api-auth 6, example 1).
+- `npm test` → 6 test files / **80 passed** (frontend-auth 16, api-handlers 24, api-validation 17, store 15, api-auth 6, example 1).
 - `npx tsc -b` → exit 0.
 - `npm run build` → PASS (PWA, 15 precache entries; pre-existing warnings only).
 - **Production probes re-verified 2026-09-05 (pre-rotation baseline still valid post-cleanup):** `/`, `/login`, `/borrower/<uuid>` → 200; `/sw.js` → 200; unauth `GET /api/borrowers` + `POST /api/transactions` → 401.
@@ -1835,6 +1835,22 @@ Then perform the live browser checklist (see Sprint 10 §3): sign-up/login/logou
 - **COMPLETED (executed):** secret audit + `.env.example` leakage scrubbed; Supabase/Google residue confirmed removable with no source changes; 4 unused dependencies removed; `dev-dist/` untracked; final code review + git audit clean; final automated tests green (77 / tsc 0 / build PASS); production routing + 401 probes re-verified.
 - **PENDING (user-run):** Neon DB password rotation + Vercel `DATABASE_URL` update + redeploy; post-rotation production re-verification; live browser/multi-user/PWA/DB-persistence checklist; the §7 read-only schema queries.
 - **No architecture change. Google OAuth NOT reintroduced. No security check removed. No Supabase data migration. No secret value printed in this document.**
+
+### 9. Production hotfix — "Session token missing" (executed 2026-09-05)
+
+**Reported:** after email/password login on production, the app shows `error: "Session token missing"`. Login succeeds (session is created), but the Vercel API rejects the follow-up data requests.
+
+**Root cause (verified against the installed Neon Auth SDK, `@neondatabase/neon-js` 0.7.0-beta / `@neondatabase/auth` 0.5.0-beta):** Neon Auth's session cookie is scoped to the **Neon Auth host** (`ep-wispy-pond-…neonauth.c-4…neon.tech/neondb/auth`), not to the app origin. The client (`ProtectedRoute`/`UserMenu`) works because the SDK's `$fetch` sends `credentials: "include"` to the Auth host. But `src/lib/store.ts` fetches `/api/*` **on the app origin** with no cookie and no `Authorization` header, so `api/_lib/auth.ts` `extractSessionToken()` finds nothing and `verifySession()` throws `AuthError("Session token missing")` (401). The SDK's vanilla client already exposes the current session JWT as `session.token` (the Auth server injects a fresh token on every `/get-session` call via the `set-auth-jwt` response header — confirmed in the SDK's `customFetchImpl`/`onSuccess` wiring), and `api/_lib/auth.ts` already supported `Authorization: Bearer` extraction.
+
+**Fix (no architecture change):**
+- `src/lib/neon-auth.ts` — added `getSessionToken()`: returns the current session JWT from `authClient.getSession().data.session.token`, cached until shortly before its `exp` (30 s lead), with in-flight dedupe; plus `invalidateSessionToken()`. No fallback to any client-provided `user_id`; if no token exists it returns `null`.
+- `src/lib/store.ts` — `apiRequest()` now obtains that token and sends `Authorization: Bearer <token>` on every `/api/*` call (replacing the never-effective same-origin-cookie assumption). `credentials: "same-origin"` retained; bodies/status mapping unchanged.
+- `src/components/UserMenu.tsx` — calls `invalidateSessionToken()` after `signOut()` so no stale cached JWT survives logout.
+- **Security untouched:** the server still resolves the user id only from the verified session on the Auth host; the browser cannot inject a `user_id`.
+
+**Verification (executed):** `npm test` → 6 files / **80 passed** (3 new store tests cover Bearer-header attach and header omission with no token); `npx tsc -b` → exit 0; `npm run build` → PASS (PWA, 15 precache entries). Unauthenticated production API requests still return 401 (re-verified earlier).
+
+**Production verification (PENDING, user-run):** push/redeploy the updated bundle (Vercel auto-builds from the connected repo), log in with email/password, and confirm the dashboard loads (borrowers + transactions) without the "Session token missing" error; then re-run logout and confirm it returns to `/login` and protected API calls then 401. Automation cannot execute a browser login, so nothing is claimed until run.
 
 ---
 

@@ -15,6 +15,8 @@ vi.mock("@/lib/neon-auth", () => ({
     getSession: vi.fn(),
     signOut: vi.fn(),
   },
+  getSessionToken: vi.fn(),
+  invalidateSessionToken: vi.fn(),
 }));
 
 import { authClient } from "@/lib/neon-auth";

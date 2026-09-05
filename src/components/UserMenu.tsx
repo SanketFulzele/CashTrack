@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { authClient } from "@/lib/neon-auth";
+import { authClient, invalidateSessionToken } from "@/lib/neon-auth";
 import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
@@ -72,6 +72,7 @@ export function UserMenu() {
         <DropdownMenuItem
           onClick={async () => {
             await authClient.signOut();
+            invalidateSessionToken();
             navigate("/login");
           }}
           className="cursor-pointer text-destructive flex items-center gap-2 px-3 py-2"

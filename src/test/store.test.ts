@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+
+const { getSessionTokenMock } = vi.hoisted(() => ({
+  getSessionTokenMock: vi.fn(),
+}));
+
+vi.mock("@/lib/neon-auth", () => ({
+  getSessionToken: getSessionTokenMock,
+}));
+
 import {
   ApiError,
   getBorrowers,
@@ -40,10 +49,16 @@ function lastFetchCallBody(): Record<string, unknown> {
   return JSON.parse((call[1] as RequestInit).body as string);
 }
 
+function lastFetchCallInit(): RequestInit {
+  const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+  return call[1] as RequestInit;
+}
+
 describe("src/lib/store (API-backed)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", fetchMock);
+    getSessionTokenMock.mockResolvedValue("session-jwt-token");
   });
 
   it("getBorrowers calls GET /api/borrowers", async () => {
@@ -241,6 +256,28 @@ describe("src/lib/store (API-backed)", () => {
       "Request failed with status 500"
     );
   });
+
+  it("attaches the Neon session JWT as a Bearer token on every request", async () => {
+    mockFetchOk([]);
+    getSessionTokenMock.mockResolvedValue("fresh-jwt");
+
+    await getBorrowers();
+
+    expect(getSessionTokenMock).toHaveBeenCalled();
+    expect(lastFetchCallInit().headers).toEqual(
+      expect.objectContaining({ Authorization: "Bearer fresh-jwt" })
+    );
+  });
+
+  it("omits Authorization when no session token is available", async () => {
+    mockFetchError(401, { error: "Session token missing" });
+    getSessionTokenMock.mockResolvedValue(null);
+
+    await expect(getBorrowers()).rejects.toThrow("Session token missing");
+
+    expect(lastFetchCallInit().headers).toEqual({});
+    expect(lastFetchCallInit().headers).not.toHaveProperty("Authorization");
+  });
 });
 
 describe("store source check (no Supabase database dependency)", () => {
@@ -260,5 +297,12 @@ describe("store source check (no Supabase database dependency)", () => {
     expect(storeSource).toContain('fetch(`/api');
     expect(storeSource).toContain('"/borrowers"');
     expect(storeSource).toContain('"/transactions"');
+  });
+
+  it("store.ts authenticates /api requests with the Neon session token", () => {
+    expect(storeSource).toContain("@/lib/neon-auth");
+    expect(storeSource).toContain("getSessionToken");
+    expect(storeSource).toContain("Authorization");
+    expect(storeSource).toContain("Bearer");
   });
 });

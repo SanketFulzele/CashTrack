@@ -1,4 +1,5 @@
 import { Borrower, Transaction } from "@/types";
+import { getSessionToken } from "@/lib/neon-auth";
 
 /* ===========================
    API REQUEST HELPER
@@ -19,14 +20,18 @@ interface RequestOptions {
 }
 
 async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  // Neon Auth's session cookie lives on the Auth host, not on this origin, so
+  // the browser never sends it to /api/*. Attach the session JWT explicitly;
+  // api/_lib/auth.ts extracts it from the Authorization header.
+  const token = await getSessionToken();
+  const headers: Record<string, string> = {};
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const init: RequestInit = {
     method: options.method ?? "GET",
-    headers: options.body !== undefined
-      ? { "Content-Type": "application/json" }
-      : undefined,
+    headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    // The Neon Auth session cookie is same-origin, so default (same-origin)
-    // credentials send it automatically and the server verifies the user.
     credentials: "same-origin",
   };
 
