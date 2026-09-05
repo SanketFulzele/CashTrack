@@ -1,22 +1,75 @@
-import { supabase } from "@/lib/supabase";
 import { Borrower, Transaction } from "@/types";
+
+/* ===========================
+   API REQUEST HELPER
+=========================== */
+
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+interface RequestOptions {
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  body?: unknown;
+}
+
+async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const init: RequestInit = {
+    method: options.method ?? "GET",
+    headers: options.body !== undefined
+      ? { "Content-Type": "application/json" }
+      : undefined,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    // The Neon Auth session cookie is same-origin, so default (same-origin)
+    // credentials send it automatically and the server verifies the user.
+    credentials: "same-origin",
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, init);
+  } catch {
+    throw new ApiError("Network error: could not reach the API", 0);
+  }
+
+  if (!res.ok) {
+    let message = `Request failed with status ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === "string" && data.error) {
+        message = data.error;
+      }
+    } catch {
+      // non-JSON error body — keep the status fallback
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+/* ===========================
+   RESPONSE MAPPING
+=========================== */
+
+// `transactions.amount` is NUMERIC in Neon, which the `pg` driver returns as a
+// string; the frontend type (and Supabase behavior it replaced) uses a number.
+function normalizeTransaction(row: Transaction): Transaction {
+  return { ...row, amount: Number(row.amount) };
+}
 
 /* ===========================
    BORROWERS
 =========================== */
 
 export async function getBorrowers(): Promise<Borrower[]> {
-  const { data, error } = await supabase
-    .from("borrowers")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Error fetching borrowers:", error);
-    throw error;
-  }
-
-  return data ?? [];
+  return apiRequest<Borrower[]>("/borrowers");
 }
 
 export async function addBorrower(data: {
@@ -24,32 +77,15 @@ export async function addBorrower(data: {
   phone?: string;
   notes?: string;
 }): Promise<Borrower> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("User not authenticated");
-
-  // Build payload safely without nulls
-  const payload = {
+  const payload: { name: string; phone?: string; notes?: string } = {
     name: data.name,
-    user_id: user.id,
-    ...(data.phone ? { phone: data.phone } : {}),
-    ...(data.notes ? { notes: data.notes } : {}),
   };
-
-  const { data: inserted, error } = await supabase
-    .from("borrowers")
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error adding borrower:", error);
-    throw error;
-  }
-
-  return inserted;
+  if (data.phone) payload.phone = data.phone;
+  if (data.notes) payload.notes = data.notes;
+  return apiRequest<Borrower>("/borrowers", {
+    method: "POST",
+    body: payload,
+  });
 }
 
 export async function updateBorrower(
@@ -60,41 +96,22 @@ export async function updateBorrower(
     notes?: string;
   }
 ): Promise<void> {
-  const { error } = await supabase
-    .from("borrowers")
-    .update({
+  await apiRequest<void>(`/borrowers/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    // Undefined becomes "" so the API clears cleared fields (same as the old
+    // store sending null); undefined keys are dropped by JSON.stringify.
+    body: {
       name: updates.name,
-      phone: updates.phone || null,
-      notes: updates.notes || null,
-    })
-    .eq("id", id);
-
-  if (error) {
-    console.error("Error updating borrower:", error);
-    throw error;
-  }
+      phone: updates.phone ?? "",
+      notes: updates.notes ?? "",
+    },
+  });
 }
 
 export async function deleteBorrower(id: string): Promise<void> {
-  const { error: txnError } = await supabase
-    .from("transactions")
-    .delete()
-    .eq("borrower_id", id);
-
-  if (txnError) {
-    console.error("Error deleting related transactions:", txnError);
-    throw txnError;
-  }
-
-  const { error } = await supabase
-    .from("borrowers")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    console.error("Error deleting borrower:", error);
-    throw error;
-  }
+  await apiRequest<void>(`/borrowers/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }
 
 /* ===========================
@@ -104,19 +121,10 @@ export async function deleteBorrower(id: string): Promise<void> {
 export async function getTransactionsByBorrower(
   borrowerId: string
 ): Promise<Transaction[]> {
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("*")
-    .eq("borrower_id", borrowerId)
-    .order("date", { ascending: false })
-    .order("time", { ascending: false });
-
-  if (error) {
-    console.error("Error fetching transactions:", error);
-    throw error;
-  }
-
-  return data ?? [];
+  const rows = await apiRequest<Transaction[]>(
+    `/borrowers/${encodeURIComponent(borrowerId)}/transactions`
+  );
+  return rows.map(normalizeTransaction);
 }
 
 export async function addTransaction(t: {
@@ -127,43 +135,28 @@ export async function addTransaction(t: {
   time?: string;
   notes?: string | null;
 }): Promise<Transaction> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("User not authenticated");
-
   const payload: {
     borrower_id: string;
     amount: number;
     type: "lent" | "received";
     date: string;
-    user_id: string;
     time?: string;
-    notes?: string | null;
+    notes?: string;
   } = {
     borrower_id: t.borrower_id,
     amount: t.amount,
     type: t.type,
     date: t.date,
-    user_id: user.id,
   };
 
   if (t.time) payload.time = t.time;
   if (t.notes && t.notes.trim() !== "") payload.notes = t.notes;
 
-  const { data, error } = await supabase
-    .from("transactions")
-    .insert(payload)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error adding transaction:", error);
-    throw error;
-  }
-
-  return data;
+  const row = await apiRequest<Transaction>("/transactions", {
+    method: "POST",
+    body: payload,
+  });
+  return normalizeTransaction(row);
 }
 
 export async function updateTransaction(
@@ -175,30 +168,19 @@ export async function updateTransaction(
     notes?: string | null;
   }
 ): Promise<void> {
-  const { error } = await supabase
-    .from("transactions")
-    .update({
-      amount: updates.amount,
-      date: updates.date,
-      time: updates.time,
-      notes: updates.notes ?? null,
-    })
-    .eq("id", id);
-
-  if (error) {
-    console.error("Error updating transaction:", error);
-    throw error;
-  }
+  await apiRequest<void>(`/transactions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: {
+      ...(updates.amount !== undefined ? { amount: updates.amount } : {}),
+      ...(updates.date !== undefined ? { date: updates.date } : {}),
+      ...(updates.time !== undefined ? { time: updates.time } : {}),
+      notes: updates.notes ?? "",
+    },
+  });
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("transactions")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    console.error("Error deleting transaction:", error);
-    throw error;
-  }
+  await apiRequest<void>(`/transactions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }

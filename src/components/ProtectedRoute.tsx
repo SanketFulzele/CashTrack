@@ -1,6 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { authClient } from "@/lib/neon-auth";
 
 interface Props {
   children: JSX.Element;
@@ -12,19 +12,13 @@ const ProtectedRoute = ({ children }: Props) => {
 
   useEffect(() => {
     // Get current session
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    authClient
+      .getSession()
+      .then((result) => {
+        setSession(result.data?.session ?? null);
+      })
+      .catch(() => setSession(null))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return null;

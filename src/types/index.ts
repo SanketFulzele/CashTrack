@@ -16,7 +16,6 @@ export interface Transaction {
   date: string;
   time?: string;
   notes?: string | null; // nullable field coming from the database
-  created_at: string;
 }
 
 export interface BorrowerSummary extends Borrower {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { authClient } from "@/lib/neon-auth";
 import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
@@ -9,35 +9,32 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { LogOut, User } from "lucide-react";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
+
+interface NeonUser {
+  id: string;
+  email?: string;
+  name: string;
+  image?: string | null;
+}
 
 export function UserMenu() {
-  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [user, setUser] = useState<NeonUser | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     const loadUser = async () => {
-      const { data } = await supabase.auth.getSession();
-      setUser(data.session?.user ?? null);
+      const result = await authClient.getSession();
+      setUser(result.data?.user ?? null);
     };
 
-    loadUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
+    loadUser().catch(() => setUser(null));
   }, []);
 
   if (!user) return null;
 
-  const avatar = user.user_metadata?.avatar_url;
+  const avatar = user.image;
   const name =
-    user.user_metadata?.full_name ||
-    user.user_metadata?.name ||
+    user.name ||
     user.email ||
     "User";
 
@@ -74,7 +71,7 @@ export function UserMenu() {
         {/* Logout */}
         <DropdownMenuItem
           onClick={async () => {
-            await supabase.auth.signOut();
+            await authClient.signOut();
             navigate("/login");
           }}
           className="cursor-pointer text-destructive flex items-center gap-2 px-3 py-2"

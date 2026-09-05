@@ -1,12 +1,10 @@
-import { supabase } from "@/lib/supabase";
+import { authClient } from "@/lib/neon-auth";
 
 const Login = () => {
   const handleGoogleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
+    await authClient.signIn.social({
       provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-      },
+      callbackURL: window.location.origin,
     });
   };
 
