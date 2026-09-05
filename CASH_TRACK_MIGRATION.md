@@ -1852,6 +1852,23 @@ Then perform the live browser checklist (see Sprint 10 §3): sign-up/login/logou
 
 **Production verification (PENDING, user-run):** push/redeploy the updated bundle (Vercel auto-builds from the connected repo), log in with email/password, and confirm the dashboard loads (borrowers + transactions) without the "Session token missing" error; then re-run logout and confirm it returns to `/login` and protected API calls then 401. Automation cannot execute a browser login, so nothing is claimed until run.
 
+### 10. TEMPORARY diagnostic endpoint — GET /api/debug-auth (investigating "Internal server error")
+
+> **⚠️ TEMPORARY.** Added only to diagnose the production `GET /api/borrowers` → `{"error":"Internal server error"}`. **Must be removed** once the root cause is identified and fixed. It does not change the authentication flow, the database, or any borrower/transaction logic, and it never bypasses Neon Auth — it stages the exact same `extractSessionToken` / `verifySession` / `pool.query` calls the real routes use.
+
+**Behavior** (deployed at `https://cash-tracking-app.vercel.app/api/debug-auth` when pushed):
+1. Logs `[DEBUG AUTH] Request received`.
+2. Logs whether `Authorization` and `Cookie` headers exist, plus cookie **names only** (never values).
+3. Runs the real `extractSessionToken(req)` and logs `Session token found` + **token length** (never the token).
+4. Calls the real `verifySession(req)` (Neon Auth `get-session`) and logs the response status, whether a session was found, and whether a user ID exists.
+5. Only after authentication succeeds, runs `SELECT 1` through the real `pg.Pool` and logs `Database connection: success|failed`.
+6. Returns a safe JSON report (`requestReceived`, `authorizationHeaderPresent`, `cookieHeaderPresent`, `sessionTokenFound`, `neonAuthStatus`, `sessionFound`, `userIdFound`, `databaseConnection`) — no secrets, no tokens, no `DATABASE_URL`.
+
+- **Files:** `api/debug-auth.ts` (new), `src/test/debug-auth.test.ts` (6 tests: 405 on non-GET, no-token path, failing Neon Auth path, `SELECT 1` success, `SELECT 1` failure, and no token-leak in responses).
+- **Verification (executed):** `npm test` → 7 files / **86 passed**; `npx tsc -b` → exit 0; `npm run build` → PASS.
+- **Diagnosis loop:** deploy → log in → open `https://cash-tracking-app.vercel.app/api/debug-auth` in the same browser → read the Vercel Function Logs lines (`[DEBUG AUTH] …`) to identify the failing stage; then the fix targets only that stage.
+- **Removal note:** after the fix is confirmed, delete `api/debug-auth.ts` and `src/test/debug-auth.test.ts` and fold the report into the fix verification.
+
 ---
 
 ## Final Notes (no further sprints)
