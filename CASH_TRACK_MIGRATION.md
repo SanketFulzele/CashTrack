@@ -1594,9 +1594,40 @@ The required command is documented (Sprint 3 §manual steps): add the real produ
 npx neon neon-auth domain add <vercel-domain> --project-id morning-recipe-20657117 --branch production
 ```
 
-- The exact `<vercel-domain>` is NOT invented here; it must be the actual domain assigned by the user's Vercel project (e.g., `*.vercel.app` or a custom domain).
+- The exact `<vercel-domain>` was later confirmed by the user as `https://cash-tracking-app.vercel.app` and it has been added as a Neon Auth trusted domain (user-confirmed, Sprint 9).
 - `allow_localhost=true` remains intact for development (do NOT remove valid existing OAuth config).
-- **Google callback/redirect note:** Neon shared Google OAuth redirects to the Neon Auth URL (documented base URL), not to Vercel, so no Google Cloud Console change is required for the shared OAuth provider. No OAuth configuration was changed in this sprint.
+- **Google callback/redirect note (updated by the production OAuth diagnosis below):** the Google OAuth redirect URI always points at the Neon Auth host (`{NEON_AUTH_BASE_URL}/callback/google`), never at Vercel. The Neon **shared** Google app is intended for development; a custom Google OAuth client is required for production (see §7b).
+
+### 7b. OAuth Diagnosis — Production Google Login `redirect_uri_mismatch` (Sprint 9)
+
+**Symptom:** production Google login at `https://cash-tracking-app.vercel.app/` fails with `Error 400: redirect_uri_mismatch` / "Access blocked: This app's request is invalid".
+
+**Root cause (application code is CORRECT — no code fix was needed):** Google rejected the OAuth `redirect_uri` parameter because it is not registered as an authorized redirect URI on the Google OAuth Client currently bound to the Neon Auth Google provider.
+
+**What the app sends:** Better Auth's social sign-in builds the Google redirect URI entirely server-side from the Neon Auth base URL (verified against the installed `@neondatabase/auth` / `better-auth@1.6.23` client and the Neon docs):
+
+```
+https://ep-wispy-pond-b34jwwoo.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth/callback/google
+```
+
+- This equals `{NEON_AUTH_BASE_URL}/callback/google` (no `/api/auth` segment — the base URL already carries the `/neondb/auth` path; better-auth's `withPath` uses the URL verbatim when it has a path).
+- The frontend `callbackURL` passed in `signIn.social({ provider: "google", callbackURL: window.location.origin })` is `https://cash-tracking-app.vercel.app/` — this is only the **post-OAuth landing** URL, validated against Neon Auth **trusted domains**, NOT the Google redirect URI.
+- Google OAuth host is live (JWKS endpoint `.../neondb/auth/.well-known/jwks.json` responds).
+
+**The fix is a console configuration step (manual — credentials/consoles cannot be accessed or invented from this environment):**
+
+1. **Google Cloud Console** → https://console.cloud.google.com (correct OAuth consent project) → **APIs & Services → Credentials → OAuth 2.0 Client IDs →** select/open the Web application client that is entered in the Neon project's Google OAuth provider settings.
+   - Under **Authorized redirect URIs**, add exactly:
+     ```
+     https://ep-wispy-pond-b34jwwoo.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth/callback/google
+     ```
+   - (If a URI already exists there, correct it to this exact value. Neon docs: "Using only your marketing site's URL … or only the `callbackURL`, is a common cause of `redirect_uri_mismatch`." Wildcards are NOT allowed by Google — an entry like `...neon.tech/*` must be replaced with the exact URI above.)
+   - Under **Authorized JavaScript origins** (only if Google requires it): the app origin `https://cash-tracking-app.vercel.app` and/or the Neon Auth origin.
+2. **Neon Console** → project **morning-recipe-20657117** → **Auth/Neon Auth → Social authentication → Google**: set/confirm the OAuth client ID + secret are the ones from the Google client edited in step 1 (production uses a **custom** Google OAuth client; the shared dev app is for local development). The Neon **Auth base URL** shown in the console for the **production** branch must match the host used in the redirect URI above and the `VITE_NEON_AUTH_URL` / `NEON_AUTH_URL` values set in Vercel (each Neon branch has its own base URL).
+
+**How to confirm the exact `redirect_uri` being sent (before/after):** click "Sign in with Google" and inspect the failing Google URL (browser address bar or DevTools → Network → `accounts.google.com/o/oauth2/v2/auth` request) — the `redirect_uri` query parameter must equal the URI above. If it differs, the `VITE_NEON_AUTH_URL` in Vercel is pointing at a different Neon endpoint/branch than the one whose credentials are registered.
+
+**Status:** fix PENDING human console action. Sprint 9 remains NOT COMPLETED until Google login is verified in production.
 
 ### 8. Production Verification — PENDING
 
