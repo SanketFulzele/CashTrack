@@ -8,12 +8,12 @@ CashTrack is a personal money-lending tracker built with React + Vite + TypeScri
 
 ## Current Architecture
 
-> **As of Sprint 8 COMPLETED (Sprint 9 in progress — deployment blocked on manual Vercel/Neon steps); the original (Sprint 1) baseline is retained in the Sprint 1 audit section.**
+> **As of Sprint 11 (final) — the app is deployed and served from the user's Vercel project (`https://cash-tracking-app.vercel.app`); Neon Auth uses email/password (Google OAuth removed, §7c), a leaked Neon `DATABASE_URL` password in the committed `.env.example` was scrubbed and rotation is required (Sprint 11 spec). Sprints 1–11 COMPLETED; the only remaining items are user-run manual checks (Neon password rotation, live browser/multi-user/PWA/DB verification, and post-rotation production verification) — see the Final Status block and Sprint 11 section. The original (Sprint 1) baseline is retained in the Sprint 1 audit section.**
 
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
 - **Backend:** Vercel Serverless Functions (`api/*`) — the only way the browser reaches the database
 - **Database:** Neon PostgreSQL (2 tables: `borrowers`, `transactions`) — starts empty; populated manually by the user (fresh-start decision, Sprint 5)
-- **Auth:** Neon Auth with Google OAuth (`src/lib/neon-auth.ts`)
+- **Auth:** Neon Auth with email/password (`src/lib/neon-auth.ts`) — Google OAuth removed (§7c)
 - **Deployment:** Vercel
 - **Data layer:** `src/lib/store.ts` — all DB operations call `/api/*`
 - **State management:** `@tanstack/react-query` for data fetching/caching
@@ -24,10 +24,28 @@ CashTrack is a personal money-lending tracker built with React + Vite + TypeScri
 > **IMPLEMENTED as of Sprint 7.**
 
 - **Database:** Neon PostgreSQL (serverless, auto-suspend with data persistence)
-- **Auth:** Neon Auth + Google OAuth
+- **Auth:** Neon Auth + email/password (Google OAuth removed)
 - **API:** Vercel Serverless Functions (API routes) with upstream Neon Auth session verification
 - **Frontend:** Same React + Vite stack, data layer now routed through `src/lib/store.ts` → `/api/*`
 - **Deployment:** Vercel (same)
+
+## Final Status — NEON MIGRATION COMPLETE (Sprint 11)
+
+> **Sprints 1–11 are COMPLETED. The CashTrack Supabase → Neon migration is complete at the code, tooling, and deployment level. What remains are user-run manual verifications only (nothing is claimed as passed unless executed):**
+
+**Final architecture:** React + Vite + TypeScript frontend → Vercel Serverless Functions (`api/*`, the only way the browser reaches the database) → **Neon Auth** (session verification upstream) + **Neon PostgreSQL** (`borrowers`, `transactions`).
+
+**Auth:** Neon Auth with **email/password** only. **Google OAuth was removed** (§7c) — no `@react-oauth/google`, no `jwt-decode`, no `signIn.social`, no Google provider/config in app source. No custom auth system and no schema change were introduced; the standard Better Auth `signIn.email` / `signUp.email` client methods are used.
+
+**Data migration:** **No Supabase data was migrated** (Sprint 5 decision) — Neon production tables start empty (`fresh data`) and are populated manually through the app. Supabase remains only as an optional neon-auth compatibility layer profile; no app code depends on `@supabase/supabase-js`, Supabase env vars, or Supabase URLs.
+
+**Testing (executed, green):** `npm test` → 6 files / **77 passed**; `npx tsc -b` → exit 0; `npm run build` → PASS (PWA). Lint baseline: 12 errors / 11 warnings (pre-existing, unchanged).
+
+**Production probes (executed 2026-09-05, PASS):** `/`, `/login`, `/borrower/<uuid>` → 200 HTML (SPA rewrite, no 404 on deep refresh); `/sw.js` + `/manifest.webmanifest` → 200; unauthenticated API access → 401 (`GET`/`POST /api/borrowers`, `PATCH`/`DELETE /api/borrowers/<uuid>`, `POST /api/transactions`); by-design 405s for `GET /api/borrowers/<uuid>` and `GET /api/transactions`. Prod bundle serves `https://ep-wispy-pond-b34jwwoo.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth`; JWKS endpoint 200.
+
+**Security:** a leaked `DATABASE_URL` password committed in `.env.example` was **scrubbed** (replaced with `<ROTATED_PASSWORD>` placeholder). **The Neon role password MUST still be rotated by the user** (the exposed value remains valid until then) — see Sprint 11 spec. No other secrets were found in tracked files.
+
+**PENDING (user-run, never claimed as passed):** (1) Neon DB password rotation + Vercel `DATABASE_URL` update + redeploy, (2) post-rotation production re-verification, (3) live sign-up/login/logout/session/invalid-credentials, (4) borrower + transaction CRUD and balances in the browser, (5) two-user ownership isolation (+ direct cross-user API IDs), (6) DB persistence row verification, (7) PWA install/runtime, (8) browser-console sweep (no JS/API/CORS/401/403/500 errors), (9) the DB-schema verification query in the Sprint 11 section.
 
 ---
 
@@ -41,8 +59,9 @@ CashTrack is a personal money-lending tracker built with React + Vite + TypeScri
 - Sprint 6 — Frontend Auth Migration: **COMPLETED** (production Login / ProtectedRoute / UserMenu / App / main now use Neon Auth + Google OAuth; `store.ts` stays Supabase until Sprint 7; `@react-oauth/google` + `jwt-decode` removed)
 - Sprint 7 — Frontend Database Migration: **COMPLETED** (`store.ts` now calls `/api/*`; Supabase database access, `src/lib/supabase.ts`, `@supabase/supabase-js`, and Supabase `VITE_*` env vars removed from the frontend)
 - Sprint 8 — Full Testing: **COMPLETED** (72 tests passed, typecheck/build PASS, lint 12e/11w baseline unchanged; source audit, API security review, and frontend data-flow review clean; manual browser + multi-user live tests remain PENDING — see Sprint 8 section)
-- Sprint 9 — Production Deployment: **IN PROGRESS — BLOCKED on manual prerequisites** (deployment configuration added in `vercel.json`; actual deploy, production env vars, Neon Auth trusted-domain add, and all live production verification require the user's real Vercel/Neon/Google credentials — see Sprint 9 section)
-- Sprint 10 — Final Cutover: NOT STARTED
+- Sprint 9 — Production Deployment: **COMPLETED** (deployed on the user's Vercel project; the Google OAuth production attempt is **ABANDONED/removed** — the app now uses Neon Auth email/password (§7c); the production bundle was verified serving the documented Neon Auth endpoint; the live login check rolls into Sprint 10)
+- Sprint 10 — Full Production Testing: **COMPLETED** (automated checks + production endpoint probes passed: npm test 77 passed, tsc exit 0, build PASS; routing + unauthenticated-API-401 + PWA asset probes PASS; interactive browser, multi-user, PWA-runtime, and DB-persistence checks remain PENDING and are carried into the Sprint 11 checklist — user-run)
+- Sprint 11 — Final Cleanup & Production Sign-off: **COMPLETED** (secret audit + scrubbed committed Neon password from `.env.example` [rotation user-run], 4 unused dependencies removed, `dev-dist/` untracked, git + final code review done, final automated tests green — npm test 77 passed, tsc exit 0, build PASS; production routing/401 probes re-verified; user-run manual items PENDING: Neon DB password rotation, post-rotation production verification, live browser/multi-user/PWA/DB checks — see Sprint 11 section)
 
 ---
 
@@ -1520,7 +1539,7 @@ Sprint 6 → 58 tests; Sprint 7 → 71 tests; **Sprint 8 → 72 tests** (all pas
 
 ## Sprint 9 Detailed Work
 
-**Status: IN PROGRESS — BLOCKED on manual deployment prerequisites.**
+**Status: COMPLETED.** (This section records the original Sprint 9 work — deployment configuration, env-var mapping, and the Google OAuth blocker that led to §7c. Production deployment was later confirmed on the user's Vercel project; the remaining live-login check was carried into Sprint 10 (see the Sprint 10 section).)
 
 Everything that can be done from this repository is done (deployment configuration prepared, build re-verified). The deployment itself, production environment variables, the Neon Auth trusted-domain add, and all live production verification require real credentials/accounts that must not be invented. This sprint is therefore NOT COMPLETED.
 
@@ -1596,7 +1615,7 @@ npx neon neon-auth domain add <vercel-domain> --project-id morning-recipe-206571
 
 - The exact `<vercel-domain>` was later confirmed by the user as `https://cash-tracking-app.vercel.app` and it has been added as a Neon Auth trusted domain (user-confirmed, Sprint 9).
 - `allow_localhost=true` remains intact for development (do NOT remove valid existing OAuth config).
-- **Google callback/redirect note (updated by the production OAuth diagnosis below):** the Google OAuth redirect URI always points at the Neon Auth host (`{NEON_AUTH_BASE_URL}/callback/google`), never at Vercel. The Neon **shared** Google app is intended for development; a custom Google OAuth client is required for production (see §7b).
+- **Google callback/redirect note (updated by the production OAuth diagnosis below):** the Google OAuth redirect URI always points at the Neon Auth host (`{NEON_AUTH_BASE_URL}/callback/google`), never at Vercel. The Neon **shared** Google app is intended for development; a custom Google OAuth client is required for production (see §7b). (**Superseded by §7c:** Google OAuth was removed — the app now uses email/password, so no custom Google client is needed.)
 
 ### 7b. OAuth Diagnosis — Production Google Login `redirect_uri_mismatch` (Sprint 9)
 
@@ -1627,11 +1646,30 @@ https://ep-wispy-pond-b34jwwoo.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/
 
 **How to confirm the exact `redirect_uri` being sent (before/after):** click "Sign in with Google" and inspect the failing Google URL (browser address bar or DevTools → Network → `accounts.google.com/o/oauth2/v2/auth` request) — the `redirect_uri` query parameter must equal the URI above. If it differs, the `VITE_NEON_AUTH_URL` in Vercel is pointing at a different Neon endpoint/branch than the one whose credentials are registered.
 
-**Status:** fix PENDING human console action. Sprint 9 remains NOT COMPLETED until Google login is verified in production.
+**Status — SUPERSEDED/ABANDONED (§7c):** production Google OAuth was removed instead of fixing the redirect URI. The app now uses Neon Auth email/password. §7b is retained as the historical diagnosis; no further Google console / redirect-URI work is required.
+
+### 7c. Auth Change (Sprint 9) — Google OAuth REMOVED → Neon Auth Email/Password
+
+**Decision:** the production Google OAuth path (shared Neon keys → `redirect_uri_mismatch`, §7b) is **ABANDONED/removed**. CashTrack now authenticates with **Neon Auth email/password only**. No custom Google client or Google Cloud Console work is needed.
+
+**Why no DB/architecture change was required:** Neon Auth is built on Better Auth, whose default API is email/password. The existing client (`src/lib/neon-auth.ts` → `createAuthClient(VITE_NEON_AUTH_URL)`) already exposes `authClient.signIn.email({ email, password })` and `authClient.signUp.email({ email, password, name })` — verified against the installed `@neondatabase/neon-js` (0.7.0-beta) / `@neondatabase/auth` (0.5.0-beta) and by the passing typecheck. Email/password is enabled by default on Neon Auth; **no database schema change was made**, `DATABASE_URL` was not modified, and no user/data records were migrated.
+
+**Frontend changes (this switch):**
+- `src/pages/Login.tsx` — removed the "Sign in with Google" button and `signIn.social({ provider: "google", callbackURL })`. Now a Neon Auth email/password form with: email input, password input, login/sign-up toggle, client-side validation (required fields; ≥ 8-char password on sign-up), clear inline error messages (including server-provided ones), and a disabled loading state ("Logging in…"). Success navigates to `/`.
+- `src/pages/AuthTest.tsx` — Google social sign-in button replaced with an email/password sign-in form.
+- `src/test/frontend-auth.test.tsx` — Google OAuth tests replaced with email/password tests (sign-in, sign-up, error display, loading state, empty-field and min-length validation). Source checks now assert **no** `signIn.social`, `provider: "google"`, `@react-oauth/google`, or `GoogleOAuthProvider` in application source.
+
+**Unchanged (per requirements):** Neon Auth, Neon PostgreSQL, Vercel API routes + `verifySession`, `ProtectedRoute` session gate, `UserMenu` logout, `src/lib/store.ts` API client, borrower/transaction logic, ownership/security, `DATABASE_URL`, Vercel env vars. No `@react-oauth/google`, no `jwt-decode`; `main.tsx` already had no Google wrapper.
+
+**Note — email verification:** Neon Auth manages email verification itself. New accounts may require email verification before sign-in; Neon's verification/verification-required messaging surfaces through the login page error area. Confirm in the Neon Console that email/password (email plugin) is enabled on the **production** branch — this is a config check only, no code or schema change.
+
+**Automated results (2026-09-05):** `npm test` → **77 passed** (6 files; +5 auth tests vs. the 72-test Sprint 8 baseline); `npx tsc -b` → **exit 0**; `npm run build` → **PASS** (PWA; `sw.js`, 15 precached entries). Pre-existing `npm run lint` baseline (12 errors / 11 warnings, all in config/shadcn files) unchanged.
+
+**Remaining Sprint 9 blocker:** a user-run production check — sign up (email/password), verify email, login, protected dashboard, logout — then Sprint 9 can be marked COMPLETED. **Sprint 10 remains NOT STARTED.**
 
 ### 8. Production Verification — PENDING
 
-All live checks in the required checklist (login page load, Google OAuth login, dashboard load, UserMenu identity, logout/login-again, borrower CRUD, transaction CRUD, refresh persistence, direct navigation to protected routes, non-root refresh (SPA rewrite), PWA/service-worker in production, browser console, Vercel function logs) **cannot be executed without a deployed URL and a real Google account**. Each will be reported as PENDING/BLOCKED rather than passed.
+All live checks in the required checklist (login page load, **email/password** sign-up + login, dashboard load, UserMenu identity, logout/login-again, borrower CRUD, transaction CRUD, refresh persistence, direct navigation to protected routes, non-root refresh (SPA rewrite), PWA/service-worker in production, browser console, Vercel function logs) **cannot be executed from this environment and remain PENDING** — they require the user's browser session with a real Neon Auth email account on the deployed URL.
 
 ### 9. Security Verification (production posture)
 
@@ -1645,7 +1683,7 @@ Re-verified statically (passed):
 
 ### 10. Two-User Production Isolation — PENDING
 
-Automated ownership tests (Sprint 8, `api-handlers.test.ts`) remain the supporting coverage. A live two-account production check is **PENDING** (requires two real Google accounts + deployed API) and is not claimed as passed.
+Automated ownership tests (Sprint 8, `api-handlers.test.ts`) remain the supporting coverage. A live two-account production check is **PENDING** (requires two real Neon Auth email accounts + deployed API) and is not claimed as passed.
 
 ### 11. Data Verification — PENDING
 
@@ -1657,20 +1695,149 @@ Automated ownership tests (Sprint 8, `api-handlers.test.ts`) remain the supporti
 1. No Vercel project link / CLI / login → deployment not possible from this environment.
 2. Production env vars (`DATABASE_URL`, `NEON_AUTH_URL`, `VITE_NEON_AUTH_URL`) are real credentials the user must supply in the Vercel dashboard.
 3. The real production Vercel domain is unknown/not inventable → Neon Auth trusted domain cannot be added.
-4. Live OAuth + production CRUD + two-user isolation require a human browser session with real Google account(s).
+4. Live email/password login + production CRUD + two-user isolation require a human browser session with real Neon Auth email accounts.
 
 ### 13. Safety Confirmation
 
 - No Supabase data touched, no Supabase project modified.
-- No credentials written to the repo.
-- No architecture changes, no new dependencies, no redesign, no feature work.
-- Only repository change in this sprint: `vercel.json` (SPA rewrite config).
-- Sprint 10 (Final Cutover) was NOT started.
+- No credentials written to the repo; no secrets exposed or printed.
+- No architecture changes, no new dependencies, no redesign; the only feature work was the authorized §7c auth switch (Google OAuth removed ↔ email/password).
+- Repository changes in this sprint: `vercel.json` (SPA rewrite config) and the §7c auth switch (`src/pages/Login.tsx`, `src/pages/AuthTest.tsx`, `src/test/frontend-auth.test.tsx`).
+- Sprint 10 was NOT started as of Sprint 9; it later began as the authorized **Full Production Testing** sprint (see Sprint 10 section). Sprint 11 NOT started.
 
 ---
 
-## Upcoming Sprints
+## Sprint 10 — Full Production Testing (COMPLETED)
 
-**Sprint 9 — Production Deployment** is **IN PROGRESS (BLOCKED on manual Vercel/Neon prerequisites)**; Sprint 10 remains **NOT STARTED**.
+**Target:** verify the deployed CashTrack application (React + Vite → Vercel → Vercel API → Neon Auth → Neon PostgreSQL) end-to-end in production at `https://cash-tracking-app.vercel.app`.
 
-**Note on data:** there is no data-carrying migration on the critical path. Sprints 5–8 are COMPLETED; when the user completes Sprint 9's manual steps (Vercel deploy + env vars + trusted domain), they can create their Neon Auth account via real Google OAuth and add borrowers/transactions through the app, populating the currently-empty Neon `public` tables.
+**Status: COMPLETED** (user-confirmed). **Executed results (2026-09-05) PASSED** — automated checks and production endpoint probes. The interactive browser, multi-user, PWA-runtime, and database-persistence checks remain **PENDING** (they require a human browser session at the deployed URL with real Neon Auth email/password accounts); they are re-listed in the Sprint 11 PENDING checklist and have never been claimed as passed. All items marked PASSED below were actually executed.
+
+### 1. Automated verification (executed, local)
+
+- `npm test` → **passed** — 6 files, **77 tests**, 0 failures.
+- `npx tsc -b` → **exit 0** (no type errors).
+- `npm run build` → **PASS** — PWA emitted (`dist/sw.js`, `workbox-*`, `manifest.webmanifest`), 15 precached entries. Only pre-existing warnings: CSS `@import` order and chunk >500 kB.
+
+### 2. Production probes (executed against the deployed URL)
+
+Routing:
+- `GET /` → **200** (`text/html`) — app served.
+- `GET /login` → **200** — direct deep link loads.
+- `GET /borrower/<uuid>` → **200** (index.html) — SPA rewrite works; refreshing a protected route does **not** 404.
+
+API auth enforcement (unauthenticated → **401** JSON, as designed):
+- `GET /api/borrowers` → 401.
+- `POST /api/borrowers` → 401.
+- `PATCH /api/borrowers/<uuid>` → 401.
+- `DELETE /api/borrowers/<uuid>` → 401.
+- `POST /api/transactions` → 401.
+- Unsupported verbs are rejected by design: `GET /api/borrowers/<uuid>` and `GET /api/transactions` → 405 (handlers implement only PATCH/DELETE and POST respectively).
+- No unauthenticated request returned 200. Security/ownership code unchanged (Sprint 8 review still stands).
+
+Auth configuration:
+- Production bundle (`assets/index-DfalAdZo.js`) contains `VITE_NEON_AUTH_URL = https://ep-wispy-pond-b34jwwoo.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth` — matches the documented Sprint 3 value (this reconciles the §7b host mismatch).
+- Neon Auth host live: `…/neondb/auth/.well-known/jwks.json` → **200** (JWKS published).
+
+PWA assets:
+- `GET /sw.js` → **200** (workbox service worker).
+- `GET /manifest.webmanifest` → **200**, `name: CashTrack`, `start_url: /`.
+- `index.html` includes the `rel="manifest"` link and `registerSW.js`.
+
+### 3. PENDING — manual browser tests (require human action; NOT claimed as passed)
+
+1. **Authentication:** create an account (email + password; Neon-managed email verification may gate first sign-in), login with valid credentials, verify invalid credentials show an appropriate error, logout, login again, refresh and confirm the session persists, confirm unauthenticated users are redirected away from protected pages.
+2. **Borrower CRUD:** create a borrower → appears in the list → edit → changes persist after refresh → add phone/notes if supported by the existing UI (fields exist) → delete → removed.
+3. **Transaction CRUD:** add a "lent" transaction → add a "received" transaction → amounts/balances displayed correctly → edit → delete → page refresh after each operation and persistence confirmed.
+4. **Multi-user isolation:** User A creates borrower(s) + transactions; User B verifies none of A's data is visible and creates their own; A verifies it cannot see B's data; direct API access with the other user's IDs is rejected (ownership-scoped SQL returns 404 "not found or access denied" and cross-user reads return empty).
+5. **PWA runtime:** service worker registers, app is installable, navigation/refresh works after install, no service-worker errors in the console.
+6. **Browser/console:** no JavaScript runtime errors, no failed API requests, no auth errors, no CORS errors, no unexpected 401/403/500 under normal authenticated use.
+7. **Database persistence:** confirm production operations actually create/update/delete rows in Neon PostgreSQL (`borrowers`, `transactions`) — requires authenticated writes plus a Neon Console/query check. No Supabase data is migrated, ever.
+
+### 4. Sprint 10 result summary
+
+- **PASSED (executed):** automated test suite (77), TypeScript (exit 0), production build (PASS), production routing (/ , /login, SPA rewrite on protected deep link), unauthenticated API rejection (401 on every method), production PWA asset availability (sw.js, manifest, wiring), Neon Auth endpoint liveness + prod env reconciliation.
+- **PENDING (manual):** sign-up/login/logout/session-refresh, invalid-credential message, borrower CRUD, transaction CRUD + balances, two-user isolation, PWA install/runtime, browser-console sweep, and live DB row verification.
+- **Remaining blockers:** none in code; only the user-run manual account/browser/DB-rotation steps (see Sprint 11). **Sprint 11 (final) executed** — see below. No architecture change. Google OAuth NOT reintroduced. No security check removed. No Supabase data migration. No secret value printed in this document.
+
+---
+
+## Sprint 11 — Final Cleanup & Production Sign-off (COMPLETED)
+
+**Target:** finish the migration: rotate the leaked Neon `DATABASE_URL` password (user-run), audit and remove secrets and obsolete Supabase/Google residue, remove only genuinely unused dependencies, final code/git review, final automated tests, final production + DB checks, final document statuses, and a final report. This is the FINAL sprint — **Sprint 12 NOT started, no architecture change**.
+
+### 1. Security audit (executed)
+
+- `git ls-files` tracked only one env-style file: `.env.example`; no other `.env*` committed. `.gitignore` ignores `.env`, `.env.*`, then re-includes `!.env.example`.
+- **Finding:** the committed `.env.example` contained a **real** `DATABASE_URL` value with the role password for the production connection string. This was the **only** committed secret.
+- **Remediation (done):** the value in `.env.example` was scrubbed to `postgresql://neondb_owner:<ROTATED_PASSWORD>@…` with a comment that the real `DATABASE_URL` belongs only in Vercel environment variables.
+- **Rotation (user-run, REQUIRED):** the exposed password value is not self-revoking — the role password on Neon **must be regenerated** (see §6 runbook) and Vercel's `DATABASE_URL` updated, otherwise the previously-committed value remains valid. Do not print or commit the new password.
+- Greps for `postgres://`, `PGPASSWORD`, `BEGIN PRIVATE KEY`, `SK-`, `eyJ…`, and Google client IDs found no other secrets in tracked files.
+
+### 2. Obsolete-residue audit (executed)
+
+- **Supabase:** no app-source dependency — no `@supabase/supabase-js`, no `createClient`, no `VITE_SUPABASE` env vars, no Supabase URLs. `package-lock.json` entries (`@supabase/auth-js`, `@supabase/postgrest-js`) are transitive inside `@neondatabase/auth`'s Supabase-compatibility adapter (kept — they are required by the auth package, not the app). Remaining source matches are negative test assertions only.
+- **Google OAuth:** fully removed (§7c). No `@react-oauth/google`, `jwt-decode`, `signIn.social`, Google provider/config in app source; negative assertions in `src/test/frontend-auth.test.tsx` assert their absence. No dependency.
+
+### 3. Dependency cleanup (executed)
+
+- **Removed (verified unused — no imports anywhere, not referenced in configs or scripts):** `@hookform/resolvers`, `@tailwindcss/typography`, `@vite-pwa/assets-generator`, `sharp`.
+- **Kept (verified in use):** `react-hook-form` (via `src/components/ui/form.tsx`), `jsdom` (Vitest `environment` in `vitest.config.ts`), `@testing-library/jest-dom` (via `src/test/setup.ts`), `@types/*`.
+- No unrelated upgrades; no `--force`; only pre-existing ERESOLVE peer warnings from `@neondatabase/auth-ui`'s better-auth pins (audit vulnerabilities acknowledged as baseline).
+
+### 4. Git + code review (executed)
+
+- **Git cleanup:** `dev-dist/` (3 generated PWA files: `registerSW.js`, `sw.js`, `workbox-5a5d9309.js`) was accidentally tracked → added `dev-dist/` to `.gitignore` and `git rm -r --cached dev-dist` (staged). `dist/` was already ignored. `migrations/001_initial_schema.sql` remains tracked intentionally (migration history). Nothing committed in this session.
+- **Code review (final):** `api/_lib/db.ts` (pg.Pool from `process.env.DATABASE_URL`, ssl `rejectUnauthorized:false`), `api/_lib/auth.ts` (Better Auth session verification via `NEON_AUTH_URL`; Bearer or `__Secure-neon-auth.session_token` cookie), `vercel.json` (SPA rewrite excluding `api/`), all `api/borrowers` + `api/transactions` route handlers (auth-first via `verifySession`, owner-scoped `user_id` WHERE clauses, parameterized queries, zod validation), `src/lib/store.ts` (all DB ops via `/api/*`, same-origin credentials), `Login.tsx`/`ProtectedRoute.tsx`/`UserMenu.tsx` (email/password, composed correctly). **No new auth system; result:** architecture confirmed clean.
+
+### 5. Final automated verification (executed, green)
+
+- `npm test` → 6 test files / **77 passed** (frontend-auth 16, api-handlers 24, api-validation 17, store 13, api-auth 6, example 1).
+- `npx tsc -b` → exit 0.
+- `npm run build` → PASS (PWA, 15 precache entries; pre-existing warnings only).
+- **Production probes re-verified 2026-09-05 (pre-rotation baseline still valid post-cleanup):** `/`, `/login`, `/borrower/<uuid>` → 200; `/sw.js` → 200; unauth `GET /api/borrowers` + `POST /api/transactions` → 401.
+
+### 6. Neon DB password rotation — user runbook (MANUAL, PENDING)
+
+1. **Rotate the password** in the Neon Console (project `morning-recipe-20657117` → production branch → Database → role `neondb_owner` → “Generate new password”), or equivalent `ALTER ROLE` via `psql`. The new password must not be printed to chat, committed, or written into this document.
+2. **Update Vercel:** Project → Settings → Environment Variables → set `DATABASE_URL` (Production) to the new pooled connection string (`…@ep-wispy-pond-b34jwwoo-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb\?...`), then remove any stale value.
+3. **Redeploy** the production deployment (Redeploy button on the latest deployment, or a new commit).
+4. **Verify:** production login works and borrower/transaction create+read writes succeed; confirm the old password fails.
+
+### 7. User-run DB schema + live verification — MANUAL, PENDING (never claimed as passed)
+
+Run the following **read-only** queries in the Neon Console's SQL editor (production branch) to confirm the schema (this is the Sprint 9/10/11 “DB check”; requires an authenticated, deployed app to populate rows before verifying persistence):
+
+```sql
+-- 1) Tables (expect exactly: borrowers, transactions)
+SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;
+
+-- 2) Constraints (expect FKs/checks):
+--    transactions.borrower_id -> borrowers.id (FOREIGN KEY)
+--    transactions.type CHECK (type IN ('lent','received'))
+SELECT conname, contype, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid IN ('public.borrowers'::regclass, 'public.transactions'::regclass)
+ORDER BY conname;
+
+-- 3) Indexes (expect idx_borrowers_user_id, idx_transactions_user_id, idx_transactions_borrower_id)
+SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' ORDER BY indexname;
+
+-- 4) Row counts (fresh Neon data only — no Supabase migration data expected)
+SELECT 'borrowers' AS tbl, count(*)::text AS n FROM public.borrowers
+UNION ALL SELECT 'transactions', count(*)::text FROM public.transactions;
+```
+
+Then perform the live browser checklist (see Sprint 10 §3): sign-up/login/logout/session-refresh, invalid-credential message, borrower CRUD, transaction CRUD + balances, two-user ownership isolation (+ direct cross-user API IDs return 404/empty), DB persistence row verification, PWA install/runtime, browser-console sweep (no JS/API/CORS/401/403/500 errors).
+
+### 8. Sprint 11 result summary
+
+- **COMPLETED (executed):** secret audit + `.env.example` leakage scrubbed; Supabase/Google residue confirmed removable with no source changes; 4 unused dependencies removed; `dev-dist/` untracked; final code review + git audit clean; final automated tests green (77 / tsc 0 / build PASS); production routing + 401 probes re-verified.
+- **PENDING (user-run):** Neon DB password rotation + Vercel `DATABASE_URL` update + redeploy; post-rotation production re-verification; live browser/multi-user/PWA/DB-persistence checklist; the §7 read-only schema queries.
+- **No architecture change. Google OAuth NOT reintroduced. No security check removed. No Supabase data migration. No secret value printed in this document.**
+
+---
+
+## Final Notes (no further sprints)
+
+The migration is complete. Sprint 9-10 sections remain as the historical record; the Final Status block and this Sprint 11 section are authoritative. When the user finishes the §6 rotation and the live checks, the remaining PENDING items resolve; until then they are explicitly PENDING (not passed).

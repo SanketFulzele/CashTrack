@@ -44,15 +44,17 @@ export default function AuthTest() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleGoogleSignIn = async () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
-    const callbackURL = window.location.origin + "/auth-test";
-    const result = await authClient.signIn.social({
-      provider: "google",
-      callbackURL,
-    });
+    const result = await authClient.signIn.email({ email, password });
     if (result.error) {
       setError(result.error.message);
+    } else {
+      window.location.reload();
     }
   };
 
@@ -184,20 +186,41 @@ export default function AuthTest() {
       ) : (
         <div>
           <h2>Not authenticated</h2>
-          <button
-            onClick={handleGoogleSignIn}
-            style={{
-              padding: "0.5rem 1rem",
-              background: "#4285f4",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontSize: "1rem",
-            }}
+          <form
+            onSubmit={handleEmailSignIn}
+            style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
           >
-            Sign in with Google (Neon Auth)
-          </button>
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+            />
+            <button
+              type="submit"
+              style={{
+                padding: "0.5rem 1rem",
+                background: "#4285f4",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "1rem",
+              }}
+            >
+              Sign in (Neon Auth)
+            </button>
+          </form>
         </div>
       )}
 

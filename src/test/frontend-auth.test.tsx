@@ -10,7 +10,8 @@ const readSource = (relative: string) =>
 
 vi.mock("@/lib/neon-auth", () => ({
   authClient: {
-    signIn: { social: vi.fn() },
+    signIn: { email: vi.fn() },
+    signUp: { email: vi.fn() },
     getSession: vi.fn(),
     signOut: vi.fn(),
   },
@@ -21,7 +22,8 @@ import Login from "@/pages/Login";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { UserMenu } from "@/components/UserMenu";
 
-const signInSocial = vi.mocked(authClient.signIn.social);
+const signInEmail = vi.mocked(authClient.signIn.email);
+const signUpEmail = vi.mocked(authClient.signUp.email);
 const getSession = vi.mocked(authClient.getSession);
 const signOut = vi.mocked(authClient.signOut);
 
@@ -42,28 +44,142 @@ const neonUser = {
   createdAt: new Date(),
 };
 
+const renderLogin = () =>
+  render(
+    <MemoryRouter initialEntries={["/login"]}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<div>Home</div>} />
+      </Routes>
+    </MemoryRouter>
+  );
+
+const fillLoginForm = (email: string, password: string) => {
+  fireEvent.change(screen.getByLabelText("Email"), {
+    target: { value: email },
+  });
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: password },
+  });
+};
+
 describe("frontend auth (Neon Auth)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("Login triggers Neon Google OAuth and does not touch Supabase", async () => {
-    signInSocial.mockResolvedValue({ error: null } as never);
+  it("Login signs in with email and password via Neon Auth", async () => {
+    signInEmail.mockResolvedValue({ error: null } as never);
 
-    render(<Login />);
+    renderLogin();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Sign in with Google" })
-    );
+    fillLoginForm("sanket@example.com", "secret123");
+
+    fireEvent.click(screen.getByRole("button", { name: "Login" }));
 
     await waitFor(() =>
-      expect(signInSocial).toHaveBeenCalledTimes(1)
+      expect(signInEmail).toHaveBeenCalledWith({
+        email: "sanket@example.com",
+        password: "secret123",
+      })
     );
 
-    expect(signInSocial).toHaveBeenCalledWith({
-      provider: "google",
-      callbackURL: window.location.origin,
+    expect(await screen.findByText("Home")).toBeInTheDocument();
+  });
+
+  it("Login shows a clear error message when sign-in fails", async () => {
+    signInEmail.mockResolvedValue({
+      error: { message: "Invalid email or password" },
+    } as never);
+
+    renderLogin();
+
+    fillLoginForm("sanket@example.com", "wrong-password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Login" }));
+
+    expect(
+      await screen.findByText("Invalid email or password")
+    ).toBeInTheDocument();
+  });
+
+  it("Login shows a loading state while submitting", async () => {
+    let resolveSignIn!: (value: unknown) => void;
+    signInEmail.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveSignIn = resolve;
+      }) as never
+    );
+
+    renderLogin();
+
+    fillLoginForm("sanket@example.com", "secret123");
+
+    fireEvent.click(screen.getByRole("button", { name: "Login" }));
+
+    const loadingButton = screen.getByRole("button", {
+      name: "Logging in...",
     });
+    expect(loadingButton).toBeDisabled();
+
+    resolveSignIn({ error: null });
+
+    expect(await screen.findByText("Home")).toBeInTheDocument();
+  });
+
+  it("Login validates empty fields before calling the API", async () => {
+    signInEmail.mockResolvedValue({ error: null } as never);
+
+    renderLogin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Login" }));
+
+    expect(
+      await screen.findByText("Please enter your email and password.")
+    ).toBeInTheDocument();
+    expect(signInEmail).not.toHaveBeenCalled();
+  });
+
+  it("Login switches to sign-up and creates an account via Neon Auth", async () => {
+    signUpEmail.mockResolvedValue({ error: null } as never);
+
+    renderLogin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Sanket" },
+    });
+    fillLoginForm("sanket@example.com", "secret123");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+    await waitFor(() =>
+      expect(signUpEmail).toHaveBeenCalledWith({
+        email: "sanket@example.com",
+        password: "secret123",
+        name: "Sanket",
+      })
+    );
+
+    expect(await screen.findByText("Home")).toBeInTheDocument();
+  });
+
+  it("Login enforces a minimum password length on sign-up", async () => {
+    signUpEmail.mockResolvedValue({ error: null } as never);
+
+    renderLogin();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+
+    fillLoginForm("sanket@example.com", "short");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+    expect(
+      await screen.findByText("Password must be at least 8 characters.")
+    ).toBeInTheDocument();
+    expect(signUpEmail).not.toHaveBeenCalled();
   });
 
   it("ProtectedRoute redirects unauthenticated users to /login", async () => {
@@ -191,13 +307,16 @@ describe("frontend auth (Neon Auth)", () => {
   });
 });
 
-describe("frontend auth migration source checks (no Supabase Auth in production components)", () => {
-  it("Login uses Neon Auth and no Supabase OAuth", () => {
+describe("frontend auth source checks (Neon Auth email/password, no Supabase, no Google OAuth)", () => {
+  it("Login uses Neon Auth email/password and no Google OAuth", () => {
     const source = readSource("pages/Login.tsx");
     expect(source).not.toContain("supabase.auth");
     expect(source).not.toContain("signInWithOAuth");
+    expect(source).not.toContain("signIn.social");
+    expect(source).not.toContain("provider: \"google\"");
     expect(source).toContain('@/lib/neon-auth');
-    expect(source).toContain("signIn.social");
+    expect(source).toContain("signIn.email");
+    expect(source).toContain("signUp.email");
   });
 
   it("ProtectedRoute uses Neon Auth and no Supabase session handling", () => {
